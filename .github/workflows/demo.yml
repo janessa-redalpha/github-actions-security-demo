@@ -1,0 +1,41 @@
+name: Demo Workflow with Disallowed Action
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  demo-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: This action is allowed
+        run: |
+          echo "✅ This step uses an allowed action (actions/checkout@v4)"
+          echo "Current directory contents:"
+          ls -la
+
+      - name: Upload artifacts (allowed action)
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-artifacts
+          path: .
+
+      - name: This action is DISALLOWED (will cause policy violation)
+        uses: actions-security-demo/harden-runner@main
+        with:
+          enable-syslog: true
+          enable-auditd: true
+
+      - name: Another disallowed action example
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Final step
+        run: |
+          echo "This workflow contains disallowed actions and should fail the policy check"
+          echo "The restricted.yml workflow should block this PR"

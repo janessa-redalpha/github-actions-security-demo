@@ -1,0 +1,135 @@
+name: Restricted Actions Policy Enforcement
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+
+jobs:
+  check-allowed-actions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Scan workflows for disallowed actions
+        id: scan-workflows
+        run: |
+          echo "🔍 Scanning workflows for disallowed actions..."
+          
+          # Define allowed actions (whitelist approach)
+          ALLOWED_ACTIONS=(
+            "actions/upload-artifact"
+            "actions/checkout"
+          )
+          
+          # Find all workflow files
+          WORKFLOW_FILES=$(find .github/workflows -name "*.yml" -o -name "*.yaml" 2>/dev/null || true)
+          
+          if [ -z "$WORKFLOW_FILES" ]; then
+            echo "ℹ️  No workflow files found"
+            exit 0
+          fi
+          
+          echo "📁 Found workflow files:"
+          echo "$WORKFLOW_FILES"
+          echo ""
+          
+          # Track violations
+          VIOLATIONS=()
+          TOTAL_ACTIONS=0
+          DISALLOWED_ACTIONS=0
+          
+          # Scan each workflow file
+          for workflow_file in $WORKFLOW_FILES; do
+            echo "🔍 Scanning: $workflow_file"
+            
+            # Extract all 'uses:' lines (excluding comments)
+            USES_LINES=$(grep -n "^\s*uses:" "$workflow_file" | grep -v "#" || true)
+            
+            if [ -n "$USES_LINES" ]; then
+              echo "$USES_LINES" | while IFS=: read -r line_num uses_line; do
+                # Extract the action name from the uses line
+                action_name=$(echo "$uses_line" | sed 's/.*uses:\s*//' | sed 's/@.*//' | sed 's/\s*#.*//')
+                
+                if [ -n "$action_name" ]; then
+                  TOTAL_ACTIONS=$((TOTAL_ACTIONS + 1))
+                  
+                  # Check if action is in allowed list
+                  is_allowed=false
+                  for allowed in "${ALLOWED_ACTIONS[@]}"; do
+                    if [ "$action_name" = "$allowed" ]; then
+                      is_allowed=true
+                      break
+                    fi
+                  done
+                  
+                  if [ "$is_allowed" = false ]; then
+                    DISALLOWED_ACTIONS=$((DISALLOWED_ACTIONS + 1))
+                    violation="❌ Line $line_num in $workflow_file: '$action_name' is not allowed"
+                    VIOLATIONS+=("$violation")
+                    echo "$violation"
+                  else
+                    echo "✅ Line $line_num in $workflow_file: '$action_name' is allowed"
+                  fi
+                fi
+              done
+            fi
+          done
+          
+          echo ""
+          echo "📊 Scan Summary:"
+          echo "  Total actions found: $TOTAL_ACTIONS"
+          echo "  Disallowed actions: $DISALLOWED_ACTIONS"
+          echo "  Allowed actions: $((TOTAL_ACTIONS - DISALLOWED_ACTIONS))"
+          echo ""
+          
+          # Set outputs for summary
+          echo "total_actions=$TOTAL_ACTIONS" >> $GITHUB_OUTPUT
+          echo "disallowed_actions=$DISALLOWED_ACTIONS" >> $GITHUB_OUTPUT
+          
+          # Check for violations
+          if [ $DISALLOWED_ACTIONS -gt 0 ]; then
+            echo "🚨 Policy Violation Detected!"
+            echo ""
+            echo "❌ The following actions are not allowed:"
+            for violation in "${VIOLATIONS[@]}"; do
+              echo "  $violation"
+            done
+            echo ""
+            echo "✅ Allowed actions are:"
+            for allowed in "${ALLOWED_ACTIONS[@]}"; do
+              echo "  - $allowed"
+            done
+            echo ""
+            echo "🔧 To fix this issue:"
+            echo "  1. Replace disallowed actions with allowed ones"
+            echo "  2. Or request approval for new actions from security team"
+            echo "  3. Update the allowed actions list in restricted.yml if needed"
+            echo ""
+            echo "::error::Policy violation: $DISALLOWED_ACTIONS disallowed action(s) found"
+            exit 1
+          else
+            echo "✅ All actions are allowed!"
+            echo "::notice::Policy check passed: All $TOTAL_ACTIONS action(s) are approved"
+          fi
+
+      - name: Policy Check Summary
+        if: always()
+        run: |
+          echo "📋 Policy Check Summary"
+          echo "======================="
+          echo "Total actions scanned: ${{ steps.scan-workflows.outputs.total_actions }}"
+          echo "Disallowed actions: ${{ steps.scan-workflows.outputs.disallowed_actions }}"
+          echo ""
+          if [ "${{ steps.scan-workflows.outputs.disallowed_actions }}" -gt 0 ]; then
+            echo "❌ Policy check FAILED"
+            echo "Some actions are not in the approved list"
+          else
+            echo "✅ Policy check PASSED"
+            echo "All actions are approved"
+          fi

@@ -1,0 +1,44 @@
+name: Demo Workflow with Allowed Actions Only
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  demo-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: This action is allowed
+        run: |
+          echo "✅ This step uses an allowed action (actions/checkout@v4)"
+          echo "Current directory contents:"
+          ls -la
+
+      - name: Upload artifacts (allowed action)
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-artifacts
+          path: .
+
+      - name: Simulate security hardening (without disallowed action)
+        run: |
+          echo "🔒 Simulating security hardening without external action"
+          echo "✅ System hardening completed using built-in commands"
+          echo "✅ Audit logging enabled"
+          echo "✅ Security policies applied"
+
+      - name: Simulate Docker setup (without disallowed action)
+        run: |
+          echo "🐳 Simulating Docker setup without external action"
+          echo "✅ Docker buildx would be configured here"
+          echo "✅ Multi-platform builds would be supported"
+
+      - name: Final step
+        run: |
+          echo "✅ This workflow now only uses allowed actions"
+          echo "✅ The restricted.yml workflow should pass the policy check"
+          echo "✅ All security requirements met with approved actions only"
